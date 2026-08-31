@@ -5,10 +5,13 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db/dexie';
 import { getSyncPhase, runSync, subscribeSyncPhase } from '@/lib/sync/engine';
 
-// Trust needs visibility. "Synced" is only claimed when the engine is idle,
-// nothing is queued to push, and at least one full pull has landed on this
-// device — a fresh browser mid-download says "Syncing…", not "Synced".
-// Tap retries immediately.
+// Trust needs visibility — but only by exception. Problem states (offline,
+// queued, never-synced) stay visible; "Syncing…" appears only when a sync
+// takes longer than a blink; "Synced" lingers a few seconds as confirmation,
+// then the pill hides entirely. Tap retries immediately while shown.
+const SHOW_SYNCING_AFTER_MS = 400;
+const SYNCED_LINGER_MS = 4000;
+
 export function SyncStatus() {
   const pending = useLiveQuery(() => db().pending_writes.count(), [], 0);
   const pulledTables = useLiveQuery(() => db().sync_meta.count(), []);
@@ -40,6 +43,24 @@ export function SyncStatus() {
           ? 'stale'
           : 'synced';
 
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    // Problem states pin the pill on screen.
+    if (state === 'offline' || state === 'pending' || state === 'stale') {
+      setVisible(true);
+      return;
+    }
+    // Only surface "Syncing…" when it's actually taking a moment — the 60s
+    // background no-op sync shouldn't flash the nav.
+    if (state === 'syncing') {
+      const t = window.setTimeout(() => setVisible(true), SHOW_SYNCING_AFTER_MS);
+      return () => window.clearTimeout(t);
+    }
+    // Synced: if we were showing something, linger as confirmation, then hide.
+    const t = window.setTimeout(() => setVisible(false), SYNCED_LINGER_MS);
+    return () => window.clearTimeout(t);
+  }, [state]);
+
   const dot = {
     offline: 'bg-rose-400',
     syncing: 'bg-indigo-400 animate-pulse',
@@ -63,6 +84,8 @@ export function SyncStatus() {
     stale: 'This device has not completed a sync yet. Tap to retry.',
     synced: 'All changes are on the server.',
   }[state];
+
+  if (!visible) return null;
 
   return (
     <button
