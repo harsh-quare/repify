@@ -34,10 +34,11 @@ export default function ActiveWorkoutPage() {
 
   const workout = useLiveQuery(() => db().workouts.get(id), [id]);
   const plan = useLiveQuery(() => db().workout_plans.get(id), [id]);
+  // No loading default: undefined must stay distinguishable from "zero sets"
+  // (an ended-but-empty backdated session auto-opens in edit mode below).
   const setsInWorkout = useLiveQuery(
     (): Promise<WorkoutSet[]> => db().workout_sets.where('workout_id').equals(id).toArray(),
     [id],
-    [] as WorkoutSet[],
   );
 
   // The active exercise list = planned IDs ∪ IDs that already have logged sets.
@@ -66,6 +67,16 @@ export default function ActiveWorkoutPage() {
 
   const alreadyEnded = !!workout?.ended_at;
   const hasSets = (setsInWorkout?.length ?? 0) > 0;
+
+  // A backdated session arrives ended but empty — read-only mode would hide
+  // the very controls needed to fill it in. There's no history to protect
+  // yet, so open it editable.
+  useEffect(() => {
+    if (alreadyEnded && setsInWorkout != null && setsInWorkout.length === 0) {
+      setEditing(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alreadyEnded, setsInWorkout == null]);
 
   async function onFinish() {
     if (alreadyEnded) {

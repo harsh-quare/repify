@@ -27,6 +27,26 @@ export async function startWorkout(
   return w.id;
 }
 
+// Backfill a forgotten day: creates an already-ended session on that date
+// (18:00–19:00 local as a neutral slot). Sets logged into it are stamped with
+// the session's date, so charts/PRs/recency all land on the right day.
+export async function startPastWorkout(dateKey: string): Promise<string> {
+  const user_id = await userId();
+  const started = new Date(`${dateKey}T18:00:00`);
+  const ended = new Date(`${dateKey}T19:00:00`);
+  const w: Workout = {
+    id: uuid(),
+    user_id,
+    started_at: started.toISOString(),
+    ended_at: ended.toISOString(),
+    notes: null,
+    routine_id: null,
+    updated_at: new Date().toISOString(),
+  };
+  await applyLocalUpsert('workouts', w);
+  return w.id;
+}
+
 /** Distinct exercises of a workout, in the order they were performed. */
 export async function orderedExerciseIds(workoutId: string): Promise<string[]> {
   const sets = await db().workout_sets.where('workout_id').equals(workoutId).toArray();
@@ -82,18 +102,19 @@ export async function discardWorkout(workoutId: string): Promise<void> {
   await applyLocalDelete('workouts', workoutId);
 }
 
-// Open workouts with zero sets abandoned for over a day are accidents — discard
-// them so they never haunt history or block "one workout at a time".
-// Skipped until a full pull has landed once, so a half-synced device can't
-// mistake a real workout (sets still on the server) for an empty one.
+// Zero-set workouts left for over a day are accidents — open ones (never
+// started logging) and ended ones (e.g. a backdated session never filled in)
+// alike. Discard them so they never haunt history or block "one workout at
+// a time". Skipped until a full pull has landed once, so a half-synced device
+// can't mistake a real workout (sets still on the server) for an empty one.
 export async function cleanupAbandonedWorkouts(): Promise<void> {
   const pulledSets = await db().sync_meta.get('workout_sets');
   if (!pulledSets) return;
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const open = await db().workouts
-    .filter((w) => w.ended_at == null && w.started_at < cutoff)
+  const stale = await db().workouts
+    .filter((w) => w.started_at < cutoff && w.updated_at < cutoff)
     .toArray();
-  for (const w of open) {
+  for (const w of stale) {
     const setCount = await db().workout_sets.where('workout_id').equals(w.id).count();
     if (setCount === 0) await discardWorkout(w.id);
   }

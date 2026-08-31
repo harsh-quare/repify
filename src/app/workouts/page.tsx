@@ -7,7 +7,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db/dexie';
 import { useExerciseMap } from '@/lib/db/hooks';
 import { TopNav } from '@/components/TopNav';
-import { closeOpenWorkout, getOpenWorkout, repeatWorkout } from '@/lib/workout/actions';
+import { closeOpenWorkout, getOpenWorkout, repeatWorkout, startPastWorkout } from '@/lib/workout/actions';
 import { GROUP_LABEL, classifyWorkout, relativeDay } from '@/lib/workout/grouping';
 import type { Workout, WorkoutSet } from '@/lib/types';
 
@@ -25,6 +25,17 @@ export default function WorkoutsJournalPage() {
   const router = useRouter();
   const exercises = useExerciseMap();
   const [repeating, setRepeating] = useState<string | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillDate, setBackfillDate] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  async function onBackfill(e: React.FormEvent) {
+    e.preventDefault();
+    if (!backfillDate) return;
+    setCreating(true);
+    const id = await startPastWorkout(backfillDate);
+    router.push(`/workout/${id}`);
+  }
 
   async function onRepeat(workoutId: string) {
     const open = await getOpenWorkout();
@@ -73,10 +84,50 @@ export default function WorkoutsJournalPage() {
     <>
       <TopNav />
       <main className="max-w-3xl mx-auto px-4 py-6 w-full">
-        <h1 className="text-2xl font-semibold tracking-tight">Workout history</h1>
-        <p className="text-sm text-zinc-400 mt-1">
-          Every session, newest first. Tap one to see the sets.
-        </p>
+        <div className="flex items-baseline justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Workout history</h1>
+            <p className="text-sm text-zinc-400 mt-1">
+              Every session, newest first. Tap one to see the sets.
+            </p>
+          </div>
+          {!backfilling ? (
+            <button
+              type="button"
+              onClick={() => setBackfilling(true)}
+              className="shrink-0 rounded-md border border-zinc-700 hover:bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300"
+            >
+              + Log past workout
+            </button>
+          ) : (
+            <form onSubmit={onBackfill} className="shrink-0 flex items-center gap-2">
+              <input
+                type="date"
+                value={backfillDate}
+                onChange={(e) => setBackfillDate(e.target.value)}
+                max={new Date().toISOString().slice(0, 10)}
+                required
+                autoFocus
+                aria-label="Workout date"
+                className="rounded-md bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm text-zinc-200"
+              />
+              <button
+                type="submit"
+                disabled={creating || !backfillDate}
+                className="rounded-md bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 px-3 py-1.5 text-sm font-medium"
+              >
+                {creating ? 'Creating…' : 'Create'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setBackfilling(false)}
+                className="text-sm text-zinc-500 hover:text-zinc-300 px-1"
+              >
+                Cancel
+              </button>
+            </form>
+          )}
+        </div>
 
         {rows.length === 0 ? (
           <p className="mt-6 text-sm text-zinc-500">No workouts logged yet.</p>
