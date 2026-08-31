@@ -40,6 +40,27 @@ export async function applyLocalDelete(table: SyncableTable, rowId: string) {
 let _running = false;
 let _queued = false;
 
+// Observable phase so the UI can show what sync is actually doing —
+// "no local writes queued" is not the same thing as "synced".
+export type SyncPhase = 'idle' | 'syncing' | 'error';
+let _phase: SyncPhase = 'idle';
+const _phaseListeners = new Set<() => void>();
+
+function setPhase(phase: SyncPhase) {
+  if (_phase === phase) return;
+  _phase = phase;
+  for (const listener of _phaseListeners) listener();
+}
+
+export function getSyncPhase(): SyncPhase {
+  return _phase;
+}
+
+export function subscribeSyncPhase(listener: () => void): () => void {
+  _phaseListeners.add(listener);
+  return () => _phaseListeners.delete(listener);
+}
+
 export async function runSync(): Promise<void> {
   if (typeof window === 'undefined') return;
   if (!navigator.onLine) return;
@@ -48,11 +69,14 @@ export async function runSync(): Promise<void> {
     return;
   }
   _running = true;
+  setPhase('syncing');
   try {
     await pushPending();
     await pullChanges();
+    setPhase('idle');
   } catch (err) {
     console.warn('[sync] failed:', err);
+    setPhase('error');
   } finally {
     _running = false;
     if (_queued) {
