@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Repify
 
-## Getting Started
+Your gym log — Phase 1 MVP.
 
-First, run the development server:
+A unified, offline-first fitness tracker. **Phase 1** ships workout logging, an exercise library (~800 moves from Free Exercise DB), and body weight tracking. Nutrition, personalization, and the mobile app come in later phases — see `~/.claude/plans/lets-plan-an-application-fluffy-russell.md`.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Stack
+
+- **Next.js 16** (App Router, Turbopack) + **React 19** + **TypeScript** + **Tailwind 4**
+- **Supabase** (Postgres + Auth) — source of truth, with Row-Level Security
+- **Dexie** (IndexedDB) — offline-first local cache
+- **recharts** — body weight chart
+- **Free Exercise DB** — exercise library (public domain)
+
+## Architecture
+
+Local-first: every write goes to Dexie immediately and queues to Supabase via `lib/sync/engine.ts`. Works offline (gym WiFi is unreliable). Conflicts resolved by `updated_at` (last-write-wins).
+
+```
+src/
+  app/
+    page.tsx              Dashboard
+    onboarding/           First-run profile setup
+    auth/sign-in/         Email+password auth
+    auth/sign-out/        POST logout route
+    exercises/            Library list + filters
+    exercises/[id]/       Detail with personal history
+    workout/new/          Pick exercises + start
+    workout/[id]/         Active session, SetLogger per exercise
+    body/                 Weight log + chart
+  components/             ExerciseCard, SetLogger, AnimatedExerciseImage, TopNav, SyncProvider, DashboardClient
+  lib/
+    db/dexie.ts           Local IndexedDB schema
+    db/supabase-*.ts      Server + browser Supabase clients
+    sync/engine.ts        Pull/push sync with last-write-wins
+    workout/actions.ts    startWorkout, logSet, lastSessionSets
+    workout/body.ts       logBodyWeight
+    types.ts              Shared row types
+  proxy.ts                Next 16 proxy (formerly middleware) — auth gate
+supabase/migrations/0001_init.sql   Schema + RLS + triggers
+scripts/seed-exercises.ts           One-off seed from Free Exercise DB
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Detailed walkthrough: see [`SUPABASE_SETUP.md`](./SUPABASE_SETUP.md).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **Create a Supabase project** at supabase.com (free tier) — this provisions a hosted Postgres DB, Auth server, and Storage for the app.
+2. **Run the migration** in Supabase Studio SQL editor — paste `supabase/migrations/0001_init.sql`.
+3. **Set env vars** — copy `.env.local.example` → `.env.local` and fill:
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+   SUPABASE_SERVICE_ROLE_KEY=...   # for seed only
+   ```
+4. **Seed the exercise library** (one-off, ~800 rows):
+   ```
+   npm run seed:exercises
+   ```
+5. **Dev**:
+   ```
+   npm run dev
+   ```
 
-## Learn More
+## Verification checklist (Phase 1)
 
-To learn more about Next.js, take a look at the following resources:
+1. Sign up → complete onboarding (height + units).
+2. Browse `/exercises` — filter to chest + dumbbell, ~20 results with animated images.
+3. Start a workout, log 3 sets of bench press, end workout.
+4. Start another workout next day, pick bench press, confirm yesterday's sets show as "Last time".
+5. Toggle airplane mode mid-workout → log sets → toggle back on → confirm sets appear in Supabase dashboard.
+6. Log body weight 3 times across a week → chart renders.
+7. Open on phone — full flow works one-handed.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## What's next
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Phase 2 (nutrition tracking across all diet types), Phase 3 (personalized recommendations), Phase 4 (React Native mobile app reusing `lib/`), Phase 5 (public launch).
