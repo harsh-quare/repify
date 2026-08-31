@@ -326,6 +326,8 @@ export function calendarYearOptions(workouts: Workout[], now: Date = new Date())
   return years;
 }
 
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 export type MonthBlock = {
   key: string;
   label: string;
@@ -407,7 +409,9 @@ export function trainingMonthBlocks(
 
     blocks.push({
       key: `${y}-${String(m + 1).padStart(2, '0')}`,
-      label: monthStart.toLocaleDateString(undefined, { month: 'short' }),
+      // Static labels: locale-dependent abbreviations ("Sep" vs "Sept")
+      // differ between server and browser ICU and break hydration.
+      label: MONTH_LABELS[m],
       weeks,
     });
     cursor = new Date(y, m + 1, 1);

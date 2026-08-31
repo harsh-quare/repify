@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { db } from '@/lib/db/dexie';
-import { useUnit } from '@/lib/db/hooks';
+import { useMounted, useUnit } from '@/lib/db/hooks';
 import { formatWeight, toDisplayWeight, weightUnitLabel } from '@/lib/units';
 import {
   historySessions,
@@ -28,6 +28,7 @@ export function ExerciseProgress({ exerciseId }: { exerciseId: string }) {
   const [metric, setMetric] = useState<Metric>('topWeight');
   const unit = useUnit();
   const unitLabel = weightUnitLabel(unit);
+  const mounted = useMounted();
 
   const sets = useLiveQuery(
     (): Promise<WorkoutSet[]> =>
@@ -73,7 +74,7 @@ export function ExerciseProgress({ exerciseId }: { exerciseId: string }) {
           ))}
         </div>
         <div className="h-56 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
-          {chartData.length === 0 ? (
+          {!mounted || chartData.length === 0 ? (
             <div className="h-full flex items-center justify-center text-sm text-zinc-500">
               Log a few sets to see this lift over time.
             </div>

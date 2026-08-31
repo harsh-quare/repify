@@ -1,9 +1,16 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db/dexie';
 import type { Exercise, Profile, Routine, UnitPreference } from '@/lib/types';
+
+/** True after hydration — gates DOM-measuring UI (charts) out of SSR. */
+export function useMounted(): boolean {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  return mounted;
+}
 
 /** The signed-in user's profile from the local mirror (undefined until first sync). */
 export function useProfile(): Profile | undefined {

@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { db } from '@/lib/db/dexie';
-import { useProfile } from '@/lib/db/hooks';
+import { useMounted, useProfile } from '@/lib/db/hooks';
 import { TopNav } from '@/components/TopNav';
 import { deleteBodyWeightEntry, logBodyWeight, updateBodyWeightEntry } from '@/lib/workout/body';
 import {
@@ -20,6 +20,7 @@ export default function BodyPage() {
   const profile = useProfile();
   const unit = profile?.unit_preference ?? 'metric';
   const unitLabel = weightUnitLabel(unit);
+  const mounted = useMounted();
 
   const entries = useLiveQuery(
     () => db().body_weight_log.orderBy('logged_at').toArray(),
@@ -138,7 +139,7 @@ export default function BodyPage() {
         </form>
 
         <div className="mt-6 h-64 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
-          {chartData.length === 0 ? (
+          {!mounted || chartData.length === 0 ? (
             <div className="h-full flex items-center justify-center text-sm text-zinc-500">
               No data yet
             </div>

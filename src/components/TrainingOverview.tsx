@@ -13,7 +13,7 @@ import {
   YAxis,
 } from 'recharts';
 import { db } from '@/lib/db/dexie';
-import { useExerciseMap, useUnit } from '@/lib/db/hooks';
+import { useExerciseMap, useMounted, useUnit } from '@/lib/db/hooks';
 import { formatWeight, toDisplayWeight, weightUnitLabel } from '@/lib/units';
 import {
   VOLUME_VIEWS,
@@ -105,6 +105,7 @@ export function TrainingOverview() {
   const [view, setView] = useState<VolumeView>('all');
   const unit = useUnit();
   const exercises = useExerciseMap();
+  const mounted = useMounted();
 
   const workouts = useLiveQuery(
     (): Promise<Workout[]> => db().workouts.orderBy('started_at').toArray(),
@@ -171,7 +172,7 @@ export function TrainingOverview() {
           </div>
         </div>
         <div className="h-48 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
-          {!hasVolume ? (
+          {!mounted || !hasVolume ? (
             <div className="h-full flex items-center justify-center text-sm text-zinc-500">
               {view === 'all'
                 ? 'Volume shows up here once you log weighted sets.'
