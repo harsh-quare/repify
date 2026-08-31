@@ -70,28 +70,36 @@ export default function SettingsPage() {
     setSaving(true);
     setError(null);
     setSaved(false);
-    const sb = getSupabaseBrowser();
-    const { data: { user } } = await sb.auth.getUser();
-    if (!user) return;
-    const rest = parseInt(restSeconds, 10);
-    const patch = {
-      user_id: user.id,
-      height_cm: h,
-      unit_preference: unit,
-      display_name: displayName || null,
-      rest_timer_seconds: Number.isFinite(rest) ? Math.min(600, Math.max(15, rest)) : 90,
-    };
-    const { error } = await sb.from('profiles').upsert(patch);
-    setSaving(false);
-    if (error) {
-      setError(error.message);
-      return;
+    try {
+      const sb = getSupabaseBrowser();
+      const { data: { user } } = await sb.auth.getUser();
+      if (!user) {
+        setError('Session expired — sign in again.');
+        return;
+      }
+      const rest = parseInt(restSeconds, 10);
+      const patch = {
+        user_id: user.id,
+        height_cm: h,
+        unit_preference: unit,
+        display_name: displayName || null,
+        rest_timer_seconds: Number.isFinite(rest) ? Math.min(600, Math.max(15, rest)) : 90,
+      };
+      const { error } = await sb.from('profiles').upsert(patch);
+      if (error) {
+        setError(error.message);
+        return;
+      }
+      // Reflect into the local mirror immediately so every screen updates now,
+      // without waiting for the next sync pull.
+      const local = await db().profiles.get(user.id);
+      if (local) await db().profiles.put({ ...local, ...patch, updated_at: new Date().toISOString() });
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong — try again.');
+    } finally {
+      setSaving(false);
     }
-    // Reflect into the local mirror immediately so every screen updates now,
-    // without waiting for the next sync pull.
-    const local = await db().profiles.get(user.id);
-    if (local) await db().profiles.put({ ...local, ...patch, updated_at: new Date().toISOString() });
-    setSaved(true);
   }
 
   return (

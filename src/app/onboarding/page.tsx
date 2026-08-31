@@ -40,25 +40,30 @@ export default function OnboardingPage() {
     }
     setSaving(true);
     setError(null);
-    const sb = getSupabaseBrowser();
-    const { data: { user } } = await sb.auth.getUser();
-    if (!user) {
-      router.replace('/auth/sign-in');
-      return;
+    try {
+      const sb = getSupabaseBrowser();
+      const { data: { user } } = await sb.auth.getUser();
+      if (!user) {
+        router.replace('/auth/sign-in');
+        return;
+      }
+      const { error } = await sb.from('profiles').upsert({
+        user_id: user.id,
+        height_cm: h,
+        unit_preference: unit,
+        display_name: displayName || null,
+      });
+      if (error) {
+        setError(error.message);
+        return;
+      }
+      router.replace('/');
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong — try again.');
+    } finally {
+      setSaving(false);
     }
-    const { error } = await sb.from('profiles').upsert({
-      user_id: user.id,
-      height_cm: h,
-      unit_preference: unit,
-      display_name: displayName || null,
-    });
-    setSaving(false);
-    if (error) {
-      setError(error.message);
-      return;
-    }
-    router.replace('/');
-    router.refresh();
   }
 
   return (
