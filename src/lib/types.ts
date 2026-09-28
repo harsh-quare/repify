@@ -34,6 +34,8 @@ export type Workout = {
   ended_at: string | null;
   notes: string | null;
   routine_id?: string | null;
+  /** Estimated kcal at end. Null while in progress or if no body-weight log. */
+  calories_kcal?: number | null;
   updated_at: string;
 };
 

@@ -8,11 +8,13 @@ export function PasswordField({
   onChange,
   id,
   autoComplete = 'current-password',
+  placeholder,
 }: {
   value: string;
   onChange: (value: string) => void;
   id?: string;
   autoComplete?: string;
+  placeholder?: string;
 }) {
   const [visible, setVisible] = useState(false);
 
@@ -26,7 +28,8 @@ export function PasswordField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         autoComplete={autoComplete}
-        className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        placeholder={placeholder}
+        className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
       />
       <button
         type="button"

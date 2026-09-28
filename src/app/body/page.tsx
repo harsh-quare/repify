@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, BarChart, Bar } from 'recharts';
 import { db } from '@/lib/db/dexie';
 import { useMounted, useProfile } from '@/lib/db/hooks';
 import { TopNav } from '@/components/TopNav';
 import { deleteBodyWeightEntry, logBodyWeight, updateBodyWeightEntry } from '@/lib/workout/body';
+import { weeklyCalories } from '@/lib/workout/session';
 import {
   bmi,
   formatWeightWithUnit,
@@ -14,7 +15,7 @@ import {
   toDisplayWeight,
   weightUnitLabel,
 } from '@/lib/units';
-import type { BodyWeightEntry } from '@/lib/types';
+import type { BodyWeightEntry, Workout } from '@/lib/types';
 
 export default function BodyPage() {
   const profile = useProfile();
@@ -26,6 +27,12 @@ export default function BodyPage() {
     () => db().body_weight_log.orderBy('logged_at').toArray(),
     [],
     [] as BodyWeightEntry[],
+  );
+
+  const workouts = useLiveQuery(
+    () => db().workouts.toArray(),
+    [],
+    [] as Workout[],
   );
 
   const [weight, setWeight] = useState('');
@@ -93,6 +100,13 @@ export default function BodyPage() {
     }
     return null;
   }, [withTrend]);
+
+  const kcalWeeks = useMemo(() => {
+    const kg = latest ? Number(latest.weight_kg) : null;
+    return weeklyCalories(workouts ?? [], 12, kg);
+  }, [workouts, latest]);
+  const kcalTotal = kcalWeeks.reduce((sum, w) => sum + w.kcal, 0);
+  const hasKcal = kcalWeeks.some((w) => w.kcal > 0);
 
   return (
     <>
@@ -165,6 +179,37 @@ export default function BodyPage() {
               </LineChart>
             </ResponsiveContainer>
           )}
+        </div>
+
+        <div className="mt-8">
+          <h2 className="text-lg font-medium tracking-tight">Estimated session calories</h2>
+          <p className="text-sm text-zinc-400 mt-1">
+            Last 12 weeks
+            {hasKcal ? ` · ~${kcalTotal.toLocaleString()} kcal total` : ''}
+          </p>
+          <div className="mt-3 h-48 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+            {!mounted || !hasKcal ? (
+              <div className="h-full flex items-center justify-center text-sm text-zinc-500">
+                End workouts after logging body weight to estimate calories.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={kcalWeeks}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+                  <XAxis dataKey="label" stroke="#71717a" fontSize={11} />
+                  <YAxis stroke="#71717a" fontSize={11} width={44} />
+                  <Tooltip
+                    contentStyle={{ background: '#18181b', border: '1px solid #27272a' }}
+                    formatter={(value) => [`~${Number(value)} kcal`, 'Estimate']}
+                  />
+                  <Bar dataKey="kcal" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+          <p className="text-xs text-zinc-500 mt-2">
+            Estimate = 5 × body weight (kg) × hours in the session. Not a heart-rate tracker.
+          </p>
         </div>
 
         {entries && entries.length > 0 && (

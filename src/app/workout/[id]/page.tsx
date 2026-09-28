@@ -11,10 +11,12 @@ import { TopNav } from '@/components/TopNav';
 import { PrToast } from '@/components/PrToast';
 import { RestTimer } from '@/components/RestTimer';
 import { SetLogger } from '@/components/SetLogger';
-import { addToPlan, discardWorkout, endWorkout, saveWorkoutNotes } from '@/lib/workout/actions';
+import { addToPlan, closeOpenWorkout, discardWorkout, endWorkout, getOpenWorkout, repeatWorkout, saveWorkoutNotes } from '@/lib/workout/actions';
 import { saveWorkoutAsRoutine } from '@/lib/workout/routines';
+import { EstimatedKcal, SessionClock } from '@/components/SessionClock';
+import { formatDurationLabel } from '@/lib/workout/session';
 import { GROUP_LABEL, classifyWorkout, type MuscleGroup } from '@/lib/workout/grouping';
-import type { Exercise, WorkoutSet } from '@/lib/types';
+import type { BodyWeightEntry, Exercise, WorkoutSet } from '@/lib/types';
 
 export default function ActiveWorkoutPage() {
   const router = useRouter();
@@ -29,11 +31,16 @@ export default function ActiveWorkoutPage() {
   const [notesLoaded, setNotesLoaded] = useState(false);
   // Ended workouts open read-only; edits to history are deliberate.
   const [editing, setEditing] = useState(false);
+  const [repeating, setRepeating] = useState(false);
   const unit = useUnit();
   const unitLabel = weightUnitLabel(unit);
 
   const workout = useLiveQuery(() => db().workouts.get(id), [id]);
   const plan = useLiveQuery(() => db().workout_plans.get(id), [id]);
+  const latestWeight = useLiveQuery(
+    () => db().body_weight_log.orderBy('logged_at').last(),
+    [],
+  ) as BodyWeightEntry | undefined;
   // No loading default: undefined must stay distinguishable from "zero sets"
   // (an ended-but-empty backdated session auto-opens in edit mode below).
   const setsInWorkout = useLiveQuery(
@@ -106,6 +113,21 @@ export default function ActiveWorkoutPage() {
     router.push('/workouts');
   }
 
+  async function onRepeat() {
+    if (!alreadyEnded || !hasSets) return;
+    const open = await getOpenWorkout();
+    if (open) {
+      const proceed = window.confirm(
+        'You have a workout in progress. Close it out and start this one?',
+      );
+      if (!proceed) return;
+    }
+    setRepeating(true);
+    await closeOpenWorkout();
+    const newId = await repeatWorkout(id);
+    router.push(`/workout/${newId}`);
+  }
+
   async function addExercise(ex: Exercise) {
     await addToPlan(id, ex.id);
     setAdding(false);
@@ -132,7 +154,32 @@ export default function ActiveWorkoutPage() {
               {alreadyEnded ? 'Workout' : 'Workout in progress'}
             </h1>
             {workout?.started_at && (
-              <p className="text-xs text-zinc-400 mt-1">Started {new Date(workout.started_at).toLocaleString()}</p>
+              <p className="text-xs text-zinc-400 mt-1">
+                Started {new Date(workout.started_at).toLocaleString()}
+              </p>
+            )}
+            {workout?.started_at && (
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+                {alreadyEnded ? (
+                  <span className="tabular-nums text-zinc-300">
+                    {formatDurationLabel(workout.started_at, workout.ended_at)}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    <SessionClock startedAt={workout.started_at} endedAt={null} />
+                  </span>
+                )}
+                <EstimatedKcal
+                  workout={workout}
+                  weightKg={latestWeight ? Number(latestWeight.weight_kg) : null}
+                />
+                {!alreadyEnded && !latestWeight ? (
+                  <Link href="/body" className="text-xs text-zinc-500 hover:text-zinc-300">
+                    Log body weight for kcal
+                  </Link>
+                ) : null}
+              </div>
             )}
           </div>
           {workout != null && alreadyEnded && (
@@ -193,19 +240,29 @@ export default function ActiveWorkoutPage() {
           </div>
         )}
 
-        {alreadyEnded && hasSets && !workout?.routine_id && (
-          <div className="mt-3">
+        {alreadyEnded && hasSets && (
+          <div className="mt-3 flex flex-wrap items-center gap-3">
             <button
               type="button"
-              onClick={async () => {
-                const name = window.prompt('Name this routine (e.g. Upper, Push):');
-                if (!name?.trim()) return;
-                await saveWorkoutAsRoutine(id, name.trim());
-              }}
-              className="text-sm text-indigo-400 hover:text-indigo-300"
+              onClick={() => void onRepeat()}
+              disabled={repeating}
+              className="rounded-md bg-indigo-500 hover:bg-indigo-400 disabled:opacity-40 px-3 py-1.5 text-sm font-medium"
             >
-              + Save as routine
+              {repeating ? 'Starting…' : 'Repeat workout'}
             </button>
+            {!workout?.routine_id && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const name = window.prompt('Name this routine (e.g. Upper, Push):');
+                  if (!name?.trim()) return;
+                  await saveWorkoutAsRoutine(id, name.trim());
+                }}
+                className="text-sm text-indigo-400 hover:text-indigo-300"
+              >
+                Save as routine
+              </button>
+            )}
           </div>
         )}
 

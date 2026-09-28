@@ -4,6 +4,7 @@ import { v4 as uuid } from 'uuid';
 import { db } from '@/lib/db/dexie';
 import { localUserId as userId } from '@/lib/auth/local-user';
 import { applyLocalDelete, applyLocalUpsert } from '@/lib/sync/engine';
+import { estimateKcal } from '@/lib/workout/session';
 import type { Workout, WorkoutSet } from '@/lib/types';
 
 export async function startWorkout(
@@ -125,9 +126,19 @@ export async function cleanupAbandonedWorkouts(): Promise<void> {
 export async function endWorkout(workoutId: string, endedAt?: string) {
   const existing = await db().workouts.get(workoutId);
   if (!existing) return;
+  const ended_at = endedAt ?? new Date().toISOString();
+  const latest = await db().body_weight_log.orderBy('logged_at').last();
+  const kcal =
+    latest && Number(latest.weight_kg) > 0
+      ? estimateKcal(
+          Number(latest.weight_kg),
+          new Date(ended_at).getTime() - new Date(existing.started_at).getTime(),
+        )
+      : null;
   await applyLocalUpsert('workouts', {
     ...existing,
-    ended_at: endedAt ?? new Date().toISOString(),
+    ended_at,
+    calories_kcal: kcal && kcal > 0 ? kcal : existing.calories_kcal ?? null,
   });
   await db().workout_plans.delete(workoutId);
 }

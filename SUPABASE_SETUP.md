@@ -15,16 +15,17 @@ What Supabase is: a hosted backend service that gives Repify a Postgres database
    - **Pricing plan:** Free.
 6. Click **Create new project**. Wait ~2 minutes while it provisions.
 
-## Step 2 — Run the schema migration
+## Step 2 — Run the schema migrations
 
 1. In the Supabase dashboard sidebar, click **SQL Editor** (the `</>` icon).
 2. Click **+ New query**.
-3. Open `supabase/migrations/0001_init.sql` from this repo, copy the entire contents, paste into the SQL editor.
-4. Click **Run** (bottom-right, or Cmd/Ctrl+Enter).
+3. Run each file in `supabase/migrations/` in order (`0001` … `0006`). Copy the entire contents, paste, click **Run**.
 
-You should see "Success. No rows returned." This creates the `profiles`, `exercises`, `workouts`, `workout_sets`, `body_weight_log` tables, RLS policies, triggers, and the auto-profile-creation hook.
+`0001` creates `profiles`, `exercises`, `workouts`, `workout_sets`, `body_weight_log`, RLS, and the auto-profile hook. Later files add rest-timer settings, routines, and `workouts.calories_kcal`. `0006` drops the Google-signup block from `0005` so **Create account → Continue with Google** can create a user.
 
-Verify: in the sidebar, click **Table Editor** — you should see those five tables listed.
+If the project already exists, run only the files you have not applied yet (`0004` for calories; `0006` if you already ran `0005`).
+
+Verify: **Table Editor** should list those tables; after `0004`, `workouts` has a `calories_kcal` column.
 
 ## Step 3 — Copy your API keys into `.env.local`
 
@@ -51,14 +52,52 @@ Verify: in the sidebar, click **Table Editor** — you should see those five tab
 
    The `NEXT_PUBLIC_` prefix means Next.js ships the value to the browser — that's safe for the URL and anon key (they're designed for client use, protected by RLS). The service role key has **no** prefix so it stays server-only.
 
-## Step 4 — Configure auth (email/password)
+## Step 4 — Configure auth
 
-1. In the sidebar, click **Authentication** → **Sign In / Up**.
-2. Under **Auth Providers**, make sure **Email** is enabled (it is by default).
-3. For local dev convenience: scroll to **Email Auth** settings and **disable "Confirm email"** for now. (Re-enable before Phase 5 / public launch.) This lets you sign up and immediately sign in without clicking a confirmation link.
-4. Under **URL Configuration**:
-   - **Site URL:** `http://localhost:3000`
-   - **Redirect URLs:** add `http://localhost:3000/**`
+1. In the sidebar, click **Authentication** → **Sign In / Providers**.
+2. Enable **Email** (on by default).
+3. Under Email, **disable "Confirm email"** (local and production). Create account then signs the user in immediately. Leave it off unless you want a confirm-link step.
+4. Under **URL Configuration**, allow **both** local and the live Vercel app. Copy the production URL from Vercel → Project → **Domains** (e.g. `https://repify.vercel.app` or a custom domain).
+
+   - **Site URL:** the live origin (used as the default in auth emails). Example: `https://your-app.vercel.app`
+   - **Redirect URLs** — add each of these (one per line):
+     - `http://localhost:3000/**`
+     - `https://your-app.vercel.app/**`
+     - `https://*.vercel.app/**` (optional; covers Vercel preview URLs)
+
+   After Google / magic-link / password-reset, Supabase will only send the browser back to origins on this list. Localhost alone means production sign-in cannot complete.
+
+### Google sign-in
+
+1. Authentication → Providers → **Google** → enable.
+2. Create an OAuth client in [Google Cloud Console](https://console.cloud.google.com/apis/credentials) (Web application).
+3. **Authorized JavaScript origins** — add both:
+   - `http://localhost:3000`
+   - `https://your-app.vercel.app`
+4. **Authorized redirect URIs** — this is **not** localhost or Vercel. It is always Supabase:
+   `https://<project-ref>.supabase.co/auth/v1/callback`
+   (`<project-ref>` is the subdomain of your Project URL.)
+5. Paste the Google **Client ID** and **Client secret** into the Supabase Google provider form and save.
+
+Until this is set, **Continue with Google** on `/auth/sign-in` will error. Email/password still works.
+
+**Create account → Continue with Google** creates the account and signs in. **Sign in → Continue with Google** only works if that Google email already has a Repify account; otherwise the app sends them back to create one. If you already ran `0005_google_signin_only.sql`, run `0006_drop_google_signup_block.sql` or Google on Create account will fail.
+
+On Vercel, set the same `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` as in `.env.local` (Project → Settings → Environment Variables). You do **not** put the Google Client ID in Vercel env — that stays in the Supabase Google provider form.
+
+### Live site (Vercel) — same Google app, extra URLs
+
+Google’s **redirect URI stays the Supabase URL** (unchanged from local). You only add the Vercel origin next to localhost.
+
+1. Vercel → your project → **Domains**. Copy the origin, e.g. `https://your-app.vercel.app` (no path).
+2. Supabase → Authentication → **URL Configuration**:
+   - **Site URL:** that Vercel origin
+   - **Redirect URLs:** keep `http://localhost:3000/**` and add `https://your-app.vercel.app/**` (optional: `https://*.vercel.app/**` for previews)
+3. Google Cloud → the same OAuth client you already created → **Authorized JavaScript origins** → add `https://your-app.vercel.app` next to `http://localhost:3000`. Save.
+4. Vercel → Settings → Environment Variables: `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` must match `.env.local`. Redeploy if you just added them.
+5. Open `https://your-app.vercel.app/auth/sign-in` → **Continue with Google**. After Google, you should land back on the live site.
+
+Do **not** put `https://your-app.vercel.app/auth/callback` in Google’s redirect URIs. That field is only `https://<project-ref>.supabase.co/auth/v1/callback`.
 
 ## Step 5 — Seed the exercise library
 

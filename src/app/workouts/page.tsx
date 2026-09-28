@@ -9,17 +9,8 @@ import { useExerciseMap } from '@/lib/db/hooks';
 import { TopNav } from '@/components/TopNav';
 import { closeOpenWorkout, getOpenWorkout, repeatWorkout, startPastWorkout } from '@/lib/workout/actions';
 import { GROUP_LABEL, classifyWorkout, relativeDay } from '@/lib/workout/grouping';
-import type { Workout, WorkoutSet } from '@/lib/types';
-
-function durationMinutes(started: string, ended: string | null): string {
-  if (!ended) return 'in progress';
-  const ms = new Date(ended).getTime() - new Date(started).getTime();
-  const mins = Math.max(1, Math.round(ms / 60000));
-  if (mins < 60) return `${mins} min`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m === 0 ? `${h}h` : `${h}h ${m}m`;
-}
+import { formatDurationLabel, workoutKcal } from '@/lib/workout/session';
+import type { BodyWeightEntry, Workout, WorkoutSet } from '@/lib/types';
 
 export default function WorkoutsJournalPage() {
   const router = useRouter();
@@ -51,6 +42,11 @@ export default function WorkoutsJournalPage() {
     router.push(`/workout/${id}`);
   }
 
+  const latestWeight = useLiveQuery(
+    () => db().body_weight_log.orderBy('logged_at').last(),
+    [],
+  ) as BodyWeightEntry | undefined;
+
   const workouts = useLiveQuery(
     (): Promise<Workout[]> => db().workouts.orderBy('started_at').reverse().toArray(),
     [],
@@ -76,9 +72,10 @@ export default function WorkoutsJournalPage() {
       const exerciseCount = new Set(sets.map((s) => s.exercise_id)).size;
       if (sets.length === 0 || exerciseCount === 0) return [];
       const groups = exercises.size > 0 ? classifyWorkout(sets, exercises) : [];
-      return [{ workout: w, sets, groups, exerciseCount }];
+      const kcal = workoutKcal(w, latestWeight ? Number(latestWeight.weight_kg) : null);
+      return [{ workout: w, sets, groups, exerciseCount, kcal }];
     });
-  }, [workouts, allSets, exercises]);
+  }, [workouts, allSets, exercises, latestWeight]);
 
   return (
     <>
@@ -133,14 +130,16 @@ export default function WorkoutsJournalPage() {
           <p className="mt-6 text-sm text-zinc-500">No workouts logged yet.</p>
         ) : (
           <ul className="mt-6 divide-y divide-zinc-800 border border-zinc-800 rounded-xl overflow-hidden">
-            {rows.map(({ workout, sets, groups, exerciseCount }) => (
+            {rows.map(({ workout, sets, groups, exerciseCount, kcal }) => (
               <li key={workout.id} className="bg-zinc-900 hover:bg-zinc-800/60 transition flex items-stretch">
                 <Link href={`/workout/${workout.id}`} className="flex-1 min-w-0 px-4 py-3">
                   <div className="flex items-baseline justify-between gap-4">
                     <div>
                       <div className="text-sm font-medium capitalize">{relativeDay(workout.started_at)}</div>
                       <div className="text-xs text-zinc-500 mt-0.5">
-                        {new Date(workout.started_at).toLocaleString()} · {durationMinutes(workout.started_at, workout.ended_at)}
+                        {new Date(workout.started_at).toLocaleString()} ·{' '}
+                        {formatDurationLabel(workout.started_at, workout.ended_at)}
+                        {kcal != null ? ` · ~${kcal} kcal` : ''}
                       </div>
                     </div>
                     <div className="text-xs text-zinc-400 tabular-nums whitespace-nowrap">
